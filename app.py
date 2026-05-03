@@ -24,12 +24,13 @@ def guardar_datos(datos):
         json.dump(datos, f, indent=4)
 
 # --- BASE DE DATOS SIMULADA DE USUARIOS ---
+# 💡 MEJORA: Se eliminaron los números de los roles para una presentación más limpia.
 USUARIOS = {
-    "asesor1": {"pwd": "123", "rol": "1. Asesor Comercial", "nombre": "Carlos (Asesor)"},
-    "asesor2": {"pwd": "123", "rol": "1. Asesor Comercial", "nombre": "Ana (Asesora)"},
-    "cumplimiento": {"pwd": "123", "rol": "2. Cumplimiento", "nombre": "Equipo de Cumplimiento"},
-    "direccion": {"pwd": "123", "rol": "3. Dirección Comercial", "nombre": "Dirección General"},
-    "contabilidad": {"pwd": "123", "rol": "4. Contabilidad", "nombre": "Área Contable"}
+    "asesor1": {"pwd": "123", "rol": "Asesor Comercial", "nombre": "Carlos (Asesor)"},
+    "asesor2": {"pwd": "123", "rol": "Asesor Comercial", "nombre": "Ana (Asesora)"},
+    "cumplimiento": {"pwd": "123", "rol": "Cumplimiento", "nombre": "Equipo de Cumplimiento"},
+    "direccion": {"pwd": "123", "rol": "Dirección Comercial", "nombre": "Dirección General"},
+    "contabilidad": {"pwd": "123", "rol": "Contabilidad", "nombre": "Área Contable"}
 }
 
 # --- INICIALIZACIÓN DE ESTADOS DE SESIÓN ---
@@ -38,16 +39,13 @@ if 'logged_in' not in st.session_state:
 if 'usuario_actual' not in st.session_state:
     st.session_state.usuario_actual = None
 
-# --- NUEVA FUNCIÓN DE VISUALIZACIÓN SEGURA (OPCIÓN 1) ---
+# --- FUNCIÓN DE VISUALIZACIÓN SEGURA ---
 def display_pdf(base64_pdf, nombre_archivo="documento.pdf"):
     """Decodifica el PDF y ofrece un botón de descarga/apertura nativa del navegador"""
     try:
-        # Decodificamos el base64 de vuelta a bytes
         bytes_pdf = base64.b64decode(base64_pdf)
-        
         st.info("💡 Por políticas de seguridad del navegador, utilice el botón inferior para visualizar o descargar el documento de forma segura.")
         
-        # Botón de descarga/visualización nativo
         st.download_button(
             label=f"📥 Abrir / Descargar: {nombre_archivo}",
             data=bytes_pdf,
@@ -62,9 +60,8 @@ def display_pdf(base64_pdf, nombre_archivo="documento.pdf"):
 # PANTALLA DE LOGIN
 # ---------------------------------------------------------
 if not st.session_state.logged_in:
-    # Usamos Markdown con HTML para centrar el título principal
     st.markdown("<h1 style='text-align: center;'>🔐 Acceso al Sistema de Contratos</h1>", unsafe_allow_html=True)
-    st.write("") # Añade un pequeño espacio en blanco para que "respire" el diseño
+    st.write("") 
     
     col1, col2, col3 = st.columns([1, 1, 1])
     with col2:
@@ -97,7 +94,6 @@ else:
     rol_actual = usuario_info["rol"]
     nombre_actual = usuario_info["nombre"]
     
-    # Cargar la base de datos fresca
     contratos_db = cargar_datos()
 
     # --- BARRA LATERAL ---
@@ -113,19 +109,23 @@ else:
 
     st.title(f"🚀 Panel de Trabajo: {rol_actual}")
 
-    # --- ROL 1: ASESOR COMERCIAL ---
-    if rol_actual == "1. Asesor Comercial":
+    # --- ROL: ASESOR COMERCIAL ---
+    if rol_actual == "Asesor Comercial":
         st.header("📄 Registro de Nuevo Contrato")
         
         with st.form("form_carga", clear_on_submit=True):
+            # 💡 MEJORA: Layout del formulario reestructurado
+            st.info(f"👤 Gestor activo: **{nombre_actual}**")
+            
             col_a, col_b = st.columns(2)
             with col_a:
-                st.info(f"Registrando a nombre de: **{nombre_actual}**")
-                valor_iva = st.number_input("Valor antes de IVA", min_value=0.0)
+                valor_iva = st.number_input("Valor del contrato (Antes de IVA)", min_value=0.0)
             with col_b:
                 archivo = st.file_uploader("Subir Contrato Firmado (PDF)", type=['pdf'])
             
-            enviar = st.form_submit_button("Enviar a Verificación")
+            st.write("") # Espacio para respirar
+            # Botón de ancho completo para mejor cierre visual
+            enviar = st.form_submit_button("Enviar a Verificación", use_container_width=True)
             
             if enviar:
                 if archivo:
@@ -151,10 +151,11 @@ else:
 
     # --- LÓGICA COMÚN PARA ROLES DE APROBACIÓN ---
     else:
+        # 💡 MEJORA: Nombres de roles actualizados en el mapeo
         estados_por_rol = {
-            "2. Cumplimiento": "En Verificación",
-            "3. Dirección Comercial": "Pendiente Autorización",
-            "4. Contabilidad": "Para Facturar"
+            "Cumplimiento": "En Verificación",
+            "Dirección Comercial": "Pendiente Autorización",
+            "Contabilidad": "Para Facturar"
         }
         estado_buscado = estados_por_rol.get(rol_actual)
         
@@ -165,13 +166,13 @@ else:
         else:
             for i, contrato in enumerate(pendientes):
                 with st.expander(f"EXPEDIENTE {contrato['id']} - {contrato['asesor']}"):
-                    col_info, col_visor = st.columns([1, 1]) # Ajustado para que el visor y datos tengan el mismo ancho
+                    col_info, col_visor = st.columns([1, 1]) 
                     
                     with col_info:
                         st.subheader("Datos del Proceso")
                         st.write(f"**Asesor:** {contrato['asesor']}")
                         st.write(f"**Fecha Carga:** {contrato['fecha']}")
-                        st.write(f"**Valor:** ${contrato['valor']}")
+                        st.write(f"**Valor:** ${contrato['valor']:,.2f}") # Formato moneda
                         
                         if contrato['sagrilaft_req']:
                             st.warning("⚠️ Requiere Validación SAGRILAFT")
@@ -179,7 +180,7 @@ else:
                         idx_real = next((index for (index, d) in enumerate(contratos_db) if d["id"] == contrato["id"]), None)
                         
                         # --- ACCIONES ---
-                        if rol_actual == "2. Cumplimiento":
+                        if rol_actual == "Cumplimiento":
                             coment = st.text_area("Notas de Verificación", key=f"n_{contrato['id']}")
                             col_btn1, col_btn2 = st.columns(2)
                             with col_btn1:
@@ -195,7 +196,7 @@ else:
                                     guardar_datos(contratos_db)
                                     st.rerun()
                                 
-                        elif rol_actual == "3. Dirección Comercial":
+                        elif rol_actual == "Dirección Comercial":
                             st.write(f"**Historial de Notas:** {contrato['comentarios']}")
                             coment_dir = st.text_area("Observaciones de Dirección", key=f"nd_{contrato['id']}")
                             col_btn1, col_btn2 = st.columns(2)
@@ -213,7 +214,7 @@ else:
                                     guardar_datos(contratos_db)
                                     st.rerun()
                                 
-                        elif rol_actual == "4. Contabilidad":
+                        elif rol_actual == "Contabilidad":
                             st.write(f"**Historial de Notas:** {contrato['comentarios']}")
                             coment_cont = st.text_area("Observaciones de Contabilidad", key=f"nc_{contrato['id']}")
                             col_btn1, col_btn2 = st.columns(2)
@@ -233,7 +234,6 @@ else:
 
                     with col_visor:
                         st.subheader("Visor de Documento")
-                        # Llamamos a la función segura, pasándole el nombre original del archivo
                         display_pdf(contrato['archivo_b64'], contrato['archivo_nombre'])
 
     # --- TABLA DE TRAZABILIDAD ---
@@ -249,14 +249,31 @@ else:
 
     if contratos_db:
         # LÓGICA DE FILTRADO POR ROL
-        if rol_actual == "1. Asesor Comercial":
+        if rol_actual == "Asesor Comercial":
             datos_trazabilidad = [c for c in contratos_db if c['asesor'] == nombre_actual]
         else:
             datos_trazabilidad = contratos_db
             
         if datos_trazabilidad:
             df = pd.DataFrame(datos_trazabilidad).drop(columns=['archivo_b64'])
-            st.dataframe(df, use_container_width=True)
+            
+            # 💡 MEJORA: Formateo visual de las columnas para el negocio
+            df['valor'] = df['valor'].apply(lambda x: f"${x:,.2f}") # Formato moneda
+            df['sagrilaft_req'] = df['sagrilaft_req'].apply(lambda x: "🔴 Sí" if x else "🟢 No") # Emojis visuales
+            
+            # 💡 MEJORA: Renombrado de columnas para la tabla final
+            df_mostrar = df.rename(columns={
+                'id': 'Radicado',
+                'asesor': 'Asesor',
+                'valor': 'Valor (Sin IVA)',
+                'archivo_nombre': 'Documento',
+                'estado': 'Estado Actual',
+                'fecha': 'Fecha de Registro',
+                'sagrilaft_req': 'Req. SAGRILAFT',
+                'comentarios': 'Observaciones'
+            })
+            
+            st.dataframe(df_mostrar, use_container_width=True)
         else:
             st.info("No tienes registros históricos en tu cuenta.")
     else:
