@@ -62,7 +62,9 @@ def display_pdf(base64_pdf, nombre_archivo="documento.pdf"):
 # PANTALLA DE LOGIN
 # ---------------------------------------------------------
 if not st.session_state.logged_in:
-    st.title("🔐 Acceso al Sistema de Contratos")
+    # Usamos Markdown con HTML para centrar el título principal
+    st.markdown("<h1 style='text-align: center;'>🔐 Acceso al Sistema de Contratos</h1>", unsafe_allow_html=True)
+    st.write("") # Añade un pequeño espacio en blanco para que "respire" el diseño
     
     col1, col2, col3 = st.columns([1, 1, 1])
     with col2:
@@ -83,7 +85,7 @@ if not st.session_state.logged_in:
         
         st.markdown("""
         **Credenciales de prueba:**
-        * Asesores: `asesor1` / `asesor2` (Clave: 123)
+        * Asesores: `asesor1`/`asesor2` (Clave: 123)
         * Aprobadores: `cumplimiento`, `direccion`, `contabilidad` (Clave: 123)
         """)
 
