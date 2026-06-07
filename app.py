@@ -1,66 +1,50 @@
+# app.py
 import streamlit as st
-import pandas as pd
 import base64
-import json
-import os
-from datetime import datetime
+import auth
+import validators
+import database
+
+# --- INICIALIZAR BASE DE DATOS ---
+database.init_db()
 
 # --- CONFIGURACIÓN Y ESTILOS ---
-st.set_page_config(page_title="Gestor Documental de Contratos", layout="wide")
+st.set_page_config(page_title="Gestor Documental CP", layout="wide")
 
-# --- BASE DE DATOS LOCAL (JSON) ---
-DB_FILE = "base_datos_contratos.json"
+st.markdown("""
+    <style>
+    [data-testid="stMetricValue"] { font-size: 1.25rem !important; }
+    [data-testid="stMetricLabel"] p { font-size: 0.85rem !important; }
+    </style>
+""", unsafe_allow_html=True)
 
-def cargar_datos():
-    """Lee los contratos desde el archivo JSON local."""
-    if os.path.exists(DB_FILE):
-        with open(DB_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    return []
-
-def guardar_datos(datos):
-    """Guarda los contratos en el archivo JSON local."""
-    with open(DB_FILE, "w", encoding="utf-8") as f:
-        json.dump(datos, f, indent=4)
-
-# --- BASE DE DATOS SIMULADA DE USUARIOS ---
-USUARIOS = {
-    "asesor1": {"pwd": "123", "rol": "Asesor Comercial", "nombre": "Carlos (Asesor)"},
-    "asesor2": {"pwd": "123", "rol": "Asesor Comercial", "nombre": "Ana (Asesora)"},
-    "contabilidad": {"pwd": "123", "rol": "Contabilidad", "nombre": "Mariela"},
-    "comercial": {"pwd": "123", "rol": "Dirección Comercial", "nombre": "Luis"},
-    "produccion": {"pwd": "123", "rol": "Producción", "nombre": "Equipo de Producción"}
-}
-
-# --- INICIALIZACIÓN DE ESTADOS DE SESIÓN ---
 if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
 if 'usuario_actual' not in st.session_state:
     st.session_state.usuario_actual = None
+if 'contrato_auditoria_seleccionado' not in st.session_state:
+    st.session_state.contrato_auditoria_seleccionado = None
+if 'modo_visor' not in st.session_state:
+    st.session_state.modo_visor = False
 
-# --- FUNCIÓN DE VISUALIZACIÓN SEGURA ---
-def display_pdf(base64_pdf, nombre_archivo="documento.pdf"):
-    """Decodifica el PDF y ofrece un botón de descarga/apertura nativa del navegador"""
+def display_pdf(base64_pdf, nombre_archivo):
+    """Ofrece un botón de descarga nativo para los PDF."""
     try:
         bytes_pdf = base64.b64decode(base64_pdf)
-        st.info("💡 Por políticas de seguridad del navegador, utilice el botón inferior para visualizar o descargar el documento de forma segura.")
-        
         st.download_button(
-            label=f"📥 Abrir / Descargar: {nombre_archivo}",
+            label=f"📥 Descargar: {nombre_archivo}",
             data=bytes_pdf,
             file_name=nombre_archivo,
-            mime="application/pdf"
+            mime="application/pdf",
+            key=f"dl_{nombre_archivo}_{base64_pdf[:10]}" 
         )
     except Exception as e:
-        st.error("Error al procesar el documento PDF para su visualización.")
+        st.error("Error al procesar el documento PDF.")
 
-# ---------------------------------------------------------
-# PANTALLA DE LOGIN
-# ---------------------------------------------------------
+# --- PANTALLA DE LOGIN ---
 if not st.session_state.logged_in:
-    st.markdown("<h1 style='text-align: center;'>🔐 Acceso al Sistema de Contratos</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 style='text-align: center;'>🏭 Sistema de Contratos CP</h1>", unsafe_allow_html=True)
     st.write("") 
-    
     col1, col2, col3 = st.columns([1, 1, 1])
     with col2:
         with st.form("login_form"):
@@ -68,248 +52,243 @@ if not st.session_state.logged_in:
             usuario_input = st.text_input("Usuario")
             password_input = st.text_input("Contraseña", type="password")
             submit_button = st.form_submit_button("Ingresar", use_container_width=True)
-            
             if submit_button:
-                usuario_db = USUARIOS.get(usuario_input.lower())
-                if usuario_db and usuario_db["pwd"] == password_input:
+                usr_data = auth.autenticar_usuario(usuario_input, password_input)
+                if usr_data:
                     st.session_state.logged_in = True
-                    st.session_state.usuario_actual = usuario_db
+                    st.session_state.usuario_actual = usr_data
                     st.rerun()
                 else:
                     st.error("Usuario o contraseña incorrectos.")
-        
-        st.markdown("""
-        **Credenciales de prueba:**
-        * Asesores: `asesor1`/`asesor2`(Clave: 123)
-        * Aprobadores: `contabilidad`, `comercial`, `produccion`(Clave: 123)
-        """)
+        st.markdown("""**Usuarios prueba:** `asesor1`, `contabilidad`, `comercial`, `produccion`, `fabrica1`, `facturacion1` (Clave: 123)""")
 
-# ---------------------------------------------------------
-# APLICACIÓN PRINCIPAL (Usuario Autenticado)
-# ---------------------------------------------------------
+# --- APLICACIÓN PRINCIPAL ---
 else:
     usuario_info = st.session_state.usuario_actual
     rol_actual = usuario_info["rol"]
     nombre_actual = usuario_info["nombre"]
-    
-    contratos_db = cargar_datos()
 
-    # --- BARRA LATERAL ---
     st.sidebar.title("Perfil de Usuario")
-    st.sidebar.write(f"**Nombre:** {nombre_actual}")
-    st.sidebar.write(f"**Rol:** {rol_actual}")
+    st.sidebar.write(f"👤 **{nombre_actual}**")
+    st.sidebar.write(f"💼 *{rol_actual}*")
     st.sidebar.divider()
-    
     if st.sidebar.button("Cerrar Sesión", use_container_width=True):
         st.session_state.logged_in = False
         st.session_state.usuario_actual = None
+        st.session_state.contrato_auditoria_seleccionado = None
+        st.session_state.modo_visor = False
         st.rerun()
 
     st.title(f"🚀 Panel de Trabajo: {rol_actual}")
 
-    # --- ROL: ASESOR COMERCIAL ---
+    # ==========================================
+    # ROL: ASESOR COMERCIAL
+    # ==========================================
     if rol_actual == "Asesor Comercial":
-        st.header("📄 Registro de Nuevo Contrato")
+        st.header("📄 Gestión de Contratos")
         
-        with st.form("form_carga", clear_on_submit=True):
-            st.info(f"👤 Gestor activo: **{nombre_actual}**")
+        # --- VISTA 1: BANDEJA Y BUSCADOR (Solo visible si NO hay un contrato seleccionado) ---
+        if 'contrato_activo' not in st.session_state:
             
-            col_a, col_b = st.columns(2)
-            with col_a:
-                valor_iva = st.number_input("Valor del contrato (Antes de IVA)", min_value=0.0)
-            with col_b:
-                archivo = st.file_uploader("Subir Contrato Firmado (PDF)", type=['pdf'])
-            
-            st.write("") 
-            enviar = st.form_submit_button("Enviar a Verificación", use_container_width=True)
-            
-            if enviar:
-                if archivo:
-                    base64_pdf = base64.b64encode(archivo.getvalue()).decode('utf-8')
-                    nuevo_id = f"CONT-{len(contratos_db) + 1:03d}"
-                    
-                    nuevo_contrato = {
-                        'id': nuevo_id,
-                        'asesor': nombre_actual,
-                        'valor': valor_iva,
-                        'archivo_nombre': archivo.name,
-                        'archivo_b64': base64_pdf,
-                        'estado': 'En Verificación',
-                        'fecha': datetime.now().strftime("%Y-%m-%d %H:%M"),
-                        'sagrilaft_req': valor_iva >= 75,
-                        'comentarios': ""
-                    }
-                    contratos_db.append(nuevo_contrato)
-                    guardar_datos(contratos_db)
-                    st.success(f"Contrato {nuevo_id} cargado y enviado correctamente.")
-                else:
-                    st.error("Por favor cargue el archivo PDF firmado.")
+            # BANDEJA DE CORRECCIONES DIRECTA
+            rechazos = database.obtener_solicitudes(estado_filtro='PENDIENTE_ASESOR', asesor_filtro=nombre_actual)
+            if rechazos:
+                st.warning("⚠️ Tienes expedientes devueltos por auditoría que requieren corrección:")
+                for r in rechazos:
+                    col_rec1, col_rec2 = st.columns([4, 1])
+                    with col_rec1:
+                        st.error(f"**Contrato:** {r['numero_contrato']} - {r['cliente']} | **Motivo del Rechazo:** {r['comentarios']}")
+                    with col_rec2:
+                        if st.button(f"✏️ Corregir {r['numero_contrato']}", key=f"btn_corregir_{r['numero_contrato']}", use_container_width=True):
+                            st.session_state['contrato_activo'] = database.buscar_contrato_erp(r['numero_contrato'])
+                            st.rerun()
+                st.divider()
 
-    # --- LÓGICA COMÚN PARA ROLES DE APROBACIÓN ---
+            # BUSCADOR DE CONTRATOS NUEVOS
+            st.subheader("Buscar Nuevo Contrato en ERP Ofima")
+            col_busq1, col_busq2 = st.columns([3, 1])
+            with col_busq1:
+                num_contrato_busqueda = st.text_input("Número de Contrato (ej. CONT-001, CONT-002)", label_visibility="collapsed")
+            with col_busq2:
+                buscar_clicked = st.button("Buscar Contrato", use_container_width=True, type="secondary")
+                
+            if buscar_clicked:
+                datos_erp = database.buscar_contrato_erp(num_contrato_busqueda)
+                if datos_erp:
+                    st.session_state['contrato_activo'] = datos_erp
+                    st.rerun() 
+                else:
+                    st.error("Contrato no encontrado en el ERP Ofima.")
+                    
+        # --- VISTA 2: ZONA DE CARGA DOCUMENTAL ---
+        else:
+            c_activo = st.session_state['contrato_activo']
+            docs_req_data = validators.obtener_documentos_requeridos(
+                c_activo['es_banco'], c_activo['acumulado_anual'], c_activo['tipo_carroceria']
+            )
+            
+            st.success(f"Trabajando en el contrato **{c_activo['numero_contrato']}** cargado con éxito.")
+            st.divider()
+            st.write(f"### 📋 Zona de Carga Documental: **{c_activo['numero_contrato']}** ({c_activo['cliente']})")
+            
+            m1, m2, m3, m4 = st.columns(4)
+            with m1: st.metric("Cliente", c_activo['cliente'])
+            with m2: st.metric("Tipo de Carrocería", c_activo['tipo_carroceria'])
+            with m3: st.metric("Valor del Pedido", f"${c_activo['valor_pedido']:,.2f}")
+            with m4: st.metric("Acumulado Anual", f"${c_activo['acumulado_anual']:,.0f}")
+
+            docs_existentes = database.obtener_documentos(c_activo['numero_contrato'])
+            dict_docs_existentes = {d['tipo']: d for d in docs_existentes}
+
+            st.write("---")
+            archivos_para_enviar = {}
+            columnas_carga = st.columns(3)
+            
+            for index, doc in enumerate(docs_req_data):
+                col_index = index % 3
+                with columnas_carga[col_index]:
+                    st.markdown(f"**{doc['nombre']}**")
+                    
+                    if doc['nombre'] in dict_docs_existentes:
+                        archivo_previo = dict_docs_existentes[doc['nombre']]
+                        st.caption(f"🟢 *Conservando: {archivo_previo['nombre']}*")
+                        archivos_para_enviar[doc['nombre']] = {"origen": "existente", "datos": archivo_previo}
+                    else:
+                        st.caption(f"❌ *Pendiente por cargar*")
+                    
+                    file = st.file_uploader(f"Reemplazar o cargar {doc['nombre']}", type=['pdf'], key=f"up_{c_activo['numero_contrato']}_{doc['nombre']}", label_visibility="collapsed")
+                    
+                    if file:
+                        b64 = base64.b64encode(file.getvalue()).decode('utf-8')
+                        archivos_para_enviar[doc['nombre']] = {"origen": "nuevo", "nombre": file.name, "b64": b64}
+                        st.caption(f"🔄 *Listo para actualizar con: {file.name}*")
+
+            st.write("")
+            col_acc1, col_acc2 = st.columns([1, 3])
+            with col_acc1:
+                if st.button("❌ Cancelar / Volver", use_container_width=True):
+                    del st.session_state['contrato_activo']
+                    st.rerun()
+            with col_acc2:
+                if st.button("🚀 Validar Requisitos y Enviar a Contabilidad", use_container_width=True, type="primary"):
+                    if len(archivos_para_enviar) < len(docs_req_data):
+                        st.error("Error: Aún faltan documentos obligatorios por cargar en el expediente.")
+                    else:
+                        for tipo_doc, info in archivos_para_enviar.items():
+                            if info["origen"] == "nuevo":
+                                database.guardar_o_actualizar_documento(c_activo['numero_contrato'], tipo_doc, info["nombre"], info["b64"])
+                        
+                        database.registrar_solicitud(c_activo['numero_contrato'], nombre_actual, 'CONTABILIDAD', f"Enviado por el asesor. Listo para revisión.")
+                        st.success("¡Expediente actualizado y enviado a Contabilidad con éxito!")
+                        del st.session_state['contrato_activo']
+                        st.rerun()
+
+    # ==========================================
+    # ROLES DE APROBACIÓN (Contabilidad, Comercial, Producción, Fábrica, Facturación)
+    # ==========================================
     else:
-        estados_por_rol = {
-            "Contabilidad": "En Verificación",
-            "Dirección Comercial": "Pendiente Autorización",
-            "Producción": "Para Fabricar"
+        # Se separaron las configuraciones para que Fábrica y Facturación sean independientes 
+        # pero compartan la misma vista y estado destino.
+        config_roles = {
+            "Contabilidad": {"estado_ver": "CONTABILIDAD", "estado_ok": "COMERCIAL"},
+            "Dirección Comercial": {"estado_ver": "COMERCIAL", "estado_ok": "PRODUCCION"},
+            "Producción": {"estado_ver": "PRODUCCION", "estado_ok": "FABRICA_FACTURACION"},
+            "Fábrica": {"estado_ver": "FABRICA_FACTURACION", "estado_ok": None},
+            "Facturación": {"estado_ver": "FABRICA_FACTURACION", "estado_ok": None}
         }
-        estado_buscado = estados_por_rol.get(rol_actual)
-        
-        pendientes = [c for c in contratos_db if c['estado'] == estado_buscado]
+        cfg = config_roles.get(rol_actual)
+        pendientes = database.obtener_solicitudes(estado_filtro=cfg["estado_ver"])
         
         if not pendientes:
-            st.info("No tienes tareas pendientes en tu bandeja de entrada en este momento.")
+            st.info("No tienes tareas o aprobaciones pendientes en tu bandeja de entrada.")
         else:
-            for i, contrato in enumerate(pendientes):
-                with st.expander(f"📂 EXPEDIENTE: {contrato['id']} | Asesor: {contrato['asesor']}"):
+            for contrato in pendientes:
+                with st.expander(f"📂 EXPEDIENTE EN REVISIÓN: {contrato['numero_contrato']} | Cliente: {contrato['cliente']}"):
                     col_info, col_visor = st.columns([1, 1]) 
-                    
                     with col_info:
-                        st.subheader("📋 Datos del Proceso")
+                        st.subheader("📊 Datos de Verificación")
+                        st.write(f"**Asesor Responsable:** {contrato['asesor']}")
+                        st.write(f"**Carrocería Solicitada:** {contrato['tipo_carroceria']}")
+                        st.write(f"**Monto del Pedido:** ${contrato['valor']:,.2f}")
+                        if contrato['comentarios']:
+                            st.info(f"**Notas del Historial:**\n{contrato['comentarios']}")
                         
-                        col_m1, col_m2 = st.columns(2)
-                        with col_m1:
-                            st.write(f"**Asesor:** {contrato['asesor']}")
-                            st.write(f"**Fecha Carga:** {contrato['fecha']}")
-                        with col_m2:
-                            st.metric("Valor (Sin IVA)", f"${contrato['valor']:,.2f}") 
-                        
-                        if contrato['sagrilaft_req']:
-                            st.warning("⚠️ Requiere Validación SAGRILAFT")
-                        
-                        idx_real = next((index for (index, d) in enumerate(contratos_db) if d["id"] == contrato["id"]), None)
-                        
-                        # --- ACCIONES ---
-                        if rol_actual == "Contabilidad":
-                            coment = st.text_area("Notas de Verificación", key=f"n_{contrato['id']}")
-                            
-                            col_b1, col_b2, espacio_vacio = st.columns([1, 1, 2])
+                        if cfg["estado_ok"] is not None:
+                            st.write("---")
+                            coment = st.text_area("Añadir comentarios/observaciones (OBLIGATORIO)", key=f"obs_{contrato['numero_contrato']}", height=68)
+                            col_b1, col_b2 = st.columns(2)
                             with col_b1:
-                                if st.button("Validar y Enviar", key=f"v_{contrato['id']}", use_container_width=True):
-                                    contratos_db[idx_real]['estado'] = 'Pendiente Autorización'
-                                    contratos_db[idx_real]['comentarios'] = f"Contabilidad: {coment}" if coment else ""
-                                    guardar_datos(contratos_db)
-                                    st.rerun()
+                                if st.button("🟢 Autorizar / Aprobar", key=f"ok_{contrato['numero_contrato']}", use_container_width=True):
+                                    if not coment.strip(): st.error("⚠️ El comentario es obligatorio.")
+                                    else:
+                                        prefijo = f" | {rol_actual}: " if contrato['comentarios'] else f"{rol_actual}: "
+                                        database.actualizar_estado_solicitud(contrato['numero_contrato'], cfg["estado_ok"], f"{contrato['comentarios']}{prefijo}{coment}")
+                                        st.rerun()
                             with col_b2:
-                                if st.button("Rechazar", key=f"r_{contrato['id']}", use_container_width=True):
-                                    contratos_db[idx_real]['estado'] = 'Rechazado'
-                                    contratos_db[idx_real]['comentarios'] = f"Rechazo Contabilidad: {coment}"
-                                    guardar_datos(contratos_db)
-                                    st.rerun()
-                                
-                        elif rol_actual == "Dirección Comercial":
-                            if contrato['comentarios']:
-                                st.info(f"**Historial de Notas:**\n{contrato['comentarios']}")
-                            coment_dir = st.text_area("Observaciones de Dirección Comercial", key=f"nd_{contrato['id']}")
-                            
-                            col_b1, col_b2, espacio_vacio = st.columns([1, 1, 2])
-                            with col_b1:
-                                if st.button("Autorizar", key=f"a_{contrato['id']}", use_container_width=True):
-                                    contratos_db[idx_real]['estado'] = 'Para Facturar'
-                                    if coment_dir:
-                                        contratos_db[idx_real]['comentarios'] += f" | Dirección Comercial: {coment_dir}"
-                                    guardar_datos(contratos_db)
-                                    st.rerun()
-                            with col_b2:
-                                if st.button("Rechazar", key=f"rd_{contrato['id']}", use_container_width=True):
-                                    contratos_db[idx_real]['estado'] = 'Rechazado'
-                                    contratos_db[idx_real]['comentarios'] += f" | Rechazo Dirección Comercial: {coment_dir}"
-                                    guardar_datos(contratos_db)
-                                    st.rerun()
-                                
-                        elif rol_actual == "Producción":
-                            if contrato['comentarios']:
-                                st.info(f"**Historial de Notas:**\n{contrato['comentarios']}")
-                            coment_cont = st.text_area("Observaciones de Producción", key=f"nc_{contrato['id']}")
-                            
-                            col_b1, col_b2, espacio_vacio = st.columns([1, 1, 2])
-                            with col_b1:
-                                if st.button("Facturado y Cerrar", key=f"f_{contrato['id']}", use_container_width=True):
-                                    contratos_db[idx_real]['estado'] = 'Finalizado'
-                                    if coment_cont:
-                                        contratos_db[idx_real]['comentarios'] += f" | Producción: {coment_cont}"
-                                    guardar_datos(contratos_db)
-                                    st.rerun()
-                            with col_b2:
-                                if st.button("Rechazar", key=f"rc_{contrato['id']}", use_container_width=True):
-                                    contratos_db[idx_real]['estado'] = 'Rechazado'
-                                    contratos_db[idx_real]['comentarios'] += f" | Rechazo Producción: {coment_cont}"
-                                    guardar_datos(contratos_db)
-                                    st.rerun()
-
+                                if st.button("🔴 Rechazar (Devolver a Asesor)", key=f"ko_{contrato['numero_contrato']}", use_container_width=True):
+                                    if not coment.strip(): st.error("⚠️ El comentario es obligatorio.")
+                                    else:
+                                        prefijo_r = f" | Rechazo {rol_actual}: " if contrato['comentarios'] else f"Rechazo {rol_actual}: "
+                                        database.actualizar_estado_solicitud(contrato['numero_contrato'], "PENDIENTE_ASESOR", f"{contrato['comentarios']}{prefijo_r}{coment}")
+                                        st.rerun()
                     with col_visor:
-                        st.subheader("📄 Visor de Documento")
-                        display_pdf(contrato['archivo_b64'], contrato['archivo_nombre'])
+                        st.subheader("📄 Documentación Adjunta")
+                        docs = database.obtener_documentos(contrato['numero_contrato'])
+                        for d in docs:
+                            col_doc_txt, col_doc_btn = st.columns([2, 1])
+                            with col_doc_txt: st.write(f"🗎 **{d['tipo']}**\n*{d['nombre']}*")
+                            with col_doc_btn: display_pdf(d['b64'], d['nombre'])
 
-    # --- TABLA DE TRAZABILIDAD (CUSTOM GRID) ---
+    # ==========================================
+    # SECCIÓN INFERIOR DINÁMICA: TABLA O VISOR
+    # ==========================================
     st.markdown("---")
+    todas_solicitudes = database.obtener_solicitudes()
     
-    col_titulo, col_actualizar = st.columns([5, 1])
-    with col_titulo:
-        st.subheader("📊 Tablero de Trazabilidad en Tiempo Real")
-    with col_actualizar:
-        st.write("") 
-        if st.button("🔄 Actualizar Datos", use_container_width=True):
+    if st.session_state.modo_visor and st.session_state.contrato_auditoria_seleccionado:
+        if st.button("⬅️ Volver a la Tabla", type="primary"):
+            st.session_state.modo_visor = False
             st.rerun()
-
-    if contratos_db:
-        if rol_actual == "Asesor Comercial":
-            datos_trazabilidad = [c for c in contratos_db if c['asesor'] == nombre_actual]
-        else:
-            datos_trazabilidad = contratos_db
-            
-        if datos_trazabilidad:
-            # Función auxiliar para alinear verticalmente el texto con los botones de descarga
-            def celda_texto(texto):
-                st.markdown(f"<div style='margin-top: 8px; font-size: 0.9rem;'>{texto}</div>", unsafe_allow_html=True)
-            
-            # Estilos de encabezado
-            st.markdown("""
-                <style>
-                .header-col { font-weight: 600; color: #a1a1aa; font-size: 0.85rem; padding-bottom: 5px;}
-                </style>
-            """, unsafe_allow_html=True)
-            
-            # 1. ENCABEZADOS DE LA CUADRÍCULA
-            h_cols = st.columns([1.2, 1.5, 1.2, 3, 1.5, 1.5, 1.2, 2])
-            h_cols[0].markdown("<div class='header-col'>Radicado</div>", unsafe_allow_html=True)
-            h_cols[1].markdown("<div class='header-col'>Asesor</div>", unsafe_allow_html=True)
-            h_cols[2].markdown("<div class='header-col'>Valor (Sin IVA)</div>", unsafe_allow_html=True)
-            h_cols[3].markdown("<div class='header-col'>Documento</div>", unsafe_allow_html=True)
-            h_cols[4].markdown("<div class='header-col'>Estado Actual</div>", unsafe_allow_html=True)
-            h_cols[5].markdown("<div class='header-col'>Fecha Registro</div>", unsafe_allow_html=True)
-            h_cols[6].markdown("<div class='header-col'>SAGRILAFT</div>", unsafe_allow_html=True)
-            h_cols[7].markdown("<div class='header-col'>Observaciones</div>", unsafe_allow_html=True)
-            
-            st.markdown("<hr style='margin: 0; padding: 0;'>", unsafe_allow_html=True)
-            
-            # 2. FILAS DE DATOS
-            for c in datos_trazabilidad:
-                row = st.columns([1.2, 1.5, 1.2, 3, 1.5, 1.5, 1.2, 2])
-                
-                with row[0]: celda_texto(c['id'])
-                with row[1]: celda_texto(c['asesor'])
-                with row[2]: celda_texto(f"${c['valor']:,.2f}")
-                
-                # LA MAGIA: El botón de descarga simulando un hipervínculo en la columna del documento
-                with row[3]:
-                    bytes_pdf = base64.b64decode(c['archivo_b64'])
-                    st.download_button(
-                        label=f"📄 {c['archivo_nombre']}",
-                        data=bytes_pdf,
-                        file_name=c['archivo_nombre'],
-                        mime="application/pdf",
-                        key=f"grid_dl_{c['id']}",
-                        use_container_width=True
-                    )
-                
-                with row[4]: celda_texto(c['estado'])
-                with row[5]: celda_texto(c['fecha'])
-                with row[6]: celda_texto("🔴 Sí" if c['sagrilaft_req'] else "🟢 No")
-                with row[7]: celda_texto(c['comentarios'])
-                
-                st.markdown("<hr style='margin: 0; padding: 0; border-top: 1px solid #3f3f46;'>", unsafe_allow_html=True)
-
-        else:
-            st.info("No tienes registros históricos en tu cuenta.")
+        contrato_seleccionado = st.session_state.contrato_auditoria_seleccionado
+        con_datos = next((c for c in todas_solicitudes if c['numero_contrato'] == contrato_seleccionado), None)
+        if con_datos:
+            st.markdown(f"### 🔍 EXPEDIENTE HISTÓRICO: **{con_datos['numero_contrato']}**")
+            col_hist1, col_hist2 = st.columns([1, 1])
+            with col_hist1:
+                st.write(f"**Asesor:** {con_datos['asesor']} | **Cliente:** {con_datos['cliente']}")
+                st.write(f"**Estado:** `{con_datos['estado']}` | **Valor:** ${con_datos['valor']:,.2f}")
+                st.text_area("Notas / Observaciones:", value=con_datos['comentarios'], height=150, disabled=True, key=f"bit_visor_{contrato_seleccionado}")
+            with col_hist2:
+                st.markdown("#### 📂 Archivos Adjuntos Custodiados")
+                docs_historicos = database.obtener_documentos(contrato_seleccionado)
+                for dh in docs_historicos:
+                    c_t, c_b = st.columns([2, 1])
+                    with c_t: st.write(f"▪ **{dh['tipo']}**\n*{dh['nombre']}*")
+                    with c_b: display_pdf(dh['b64'], dh['nombre'])
     else:
-        st.write("No hay registros activos en el sistema.")
+        st.subheader("📊 Tablero de Trazabilidad General")
+        datos_trazabilidad = database.obtener_solicitudes(asesor_filtro=nombre_actual) if rol_actual == "Asesor Comercial" else todas_solicitudes
+        if datos_trazabilidad:
+            header_cols = st.columns([1.2, 1.5, 1.2, 1.5, 1.5, 2.5, 1.5])
+            with header_cols[0]: st.markdown("**Contrato**")
+            with header_cols[1]: st.markdown("**Cliente**")
+            with header_cols[2]: st.markdown("**Asesor**")
+            with header_cols[3]: st.markdown("**Valor Pedido**")
+            with header_cols[4]: st.markdown("**Estado Workflow**")
+            with header_cols[5]: st.markdown("**Notas**")
+            with header_cols[6]: st.markdown("**Acción**")
+            st.markdown("<hr style='margin-top:2px; margin-bottom:8px;'/>", unsafe_allow_html=True)
+            for c in datos_trazabilidad:
+                row_cols = st.columns([1.2, 1.5, 1.2, 1.5, 1.5, 2.5, 1.5])
+                with row_cols[0]: st.write(c['numero_contrato'])
+                with row_cols[1]: st.write(c['cliente'])
+                with row_cols[2]: st.write(c['asesor'])
+                with row_cols[3]: st.write(f"${c['valor']:,.2f}")
+                with row_cols[4]: st.write(f"`{c['estado']}`")
+                with row_cols[5]: st.caption(c['comentarios'] if c['comentarios'] else "Sin comentarios")
+                with row_cols[6]:
+                    if st.button("👁️ Ver Expediente", key=f"btn_link_{c['numero_contrato']}", use_container_width=True):
+                        st.session_state.contrato_auditoria_seleccionado = c['numero_contrato']
+                        st.session_state.modo_visor = True
+                        st.rerun()
+                st.markdown("<hr style='margin-top:2px; margin-bottom:4px; opacity: 0.3;'/>", unsafe_allow_html=True)
