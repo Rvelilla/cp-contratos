@@ -123,7 +123,7 @@ def obtener_solicitudes(estado_filtro=None, asesor_filtro=None):
     for r in rows:
         resultados.append({
             "numero_contrato": r[0], "asesor": r[1], "estado": r[2], "fecha": r[3], "comentarios": r[4],
-            "tipo_carroceria": r[5], "valor": r[6], "cliente": r[7], "acumulado_anual": r[8] or 0.0,
+            "tipo_carroceria": r[5], "valor_pedido": r[6], "cliente": r[7], "acumulado_anual": r[8] or 0.0,
             "es_banco": bool(r[9])
         })
     return resultados

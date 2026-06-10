@@ -57,19 +57,30 @@ def render_titulo_con_logo(titulo, nivel="h1", centro=False):
     else:
         st.markdown(f"<{nivel} style='text-align: {'center' if centro else 'left'};'>{titulo}</{nivel}>", unsafe_allow_html=True)
 
-def display_pdf(base64_pdf, nombre_archivo):
+def display_pdf(base64_pdf, nombre_archivo, llave_adicional=""):
     """Ofrece un botón de descarga nativo para los PDF."""
+    if not base64_pdf:
+        st.error("Archivo vacío.")
+        return
     try:
-        bytes_pdf = base64.b64decode(base64_pdf)
+        # Limpiar posibles espacios o saltos de línea en el base64
+        clean_b64 = base64_pdf.strip()
+        # Corregir padding si es necesario
+        missing_padding = len(clean_b64) % 4
+        if missing_padding:
+            clean_b64 += '=' * (4 - missing_padding)
+            
+        bytes_pdf = base64.b64decode(clean_b64)
+        
         st.download_button(
-            label=f"📥 Descargar: {nombre_archivo}",
+            label=f"Descargar: {nombre_archivo}",
             data=bytes_pdf,
             file_name=nombre_archivo,
             mime="application/pdf",
-            key=f"dl_{nombre_archivo}_{base64_pdf[:10]}" 
+            key=f"dl_{nombre_archivo}_{llave_adicional}_{len(clean_b64)}" 
         )
     except Exception as e:
-        st.error("Error al procesar el documento PDF.")
+        st.error(f"Error técnico al procesar PDF: {nombre_archivo}")
 
 # --- PANTALLA DE LOGIN ---
 if not st.session_state.logged_in:
@@ -111,7 +122,31 @@ else:
         st.session_state.modo_visor = False
         st.rerun()
 
+    # Logo de CP en el título principal (siempre para mantener consistencia)
     render_titulo_con_logo(f"Verificación de Contratos: {rol_actual}")
+    
+    # Inyecta JavaScript para deshabilitar las sugerencias de autocompletado/generación de contraseña del navegador
+    st.markdown(
+        """
+        <script>
+        function disablePasswordSuggestions() {
+            var passwordInput = document.querySelector('input[type="password"]');
+            
+            if (passwordInput) {
+                // Usar 'new-password' o un valor no estándar suele bloquear la sugerencia de Chrome
+                passwordInput.setAttribute('autocomplete', 'off');
+                passwordInput.setAttribute('name', 'no_autocomplete_' + Math.random());
+                passwordInput.setAttribute('readonly', 'readonly');
+                setTimeout(() => { passwordInput.removeAttribute('readonly'); }, 500);
+            }
+        }
+        // Ejecutar inmediatamente y tras cambios en el DOM
+        disablePasswordSuggestions();
+        setInterval(disablePasswordSuggestions, 1000);
+        </script>
+        """,
+        unsafe_allow_html=True
+    )
 
     # ==========================================
     # ROL: ASESOR COMERCIAL
@@ -131,7 +166,7 @@ else:
                     with col_rec1:
                         st.error(f"**Contrato:** {r['numero_contrato']} - {r['cliente']} | **Motivo:** {r['comentarios']}")
                     with col_rec2:
-                        if st.button(f"✏️ Corregir {r['numero_contrato']}", key=f"btn_corregir_{r['numero_contrato']}", use_container_width=True):
+                        if st.button(f"Corregir {r['numero_contrato']}", key=f"btn_corregir_{r['numero_contrato']}", use_container_width=True):
                             st.session_state['contrato_activo'] = r
                             st.rerun()
                 st.divider()
@@ -163,29 +198,20 @@ else:
                         valor_p = int(datos_oc["valor_pedido"])
                         val_acum = int(info_local["acumulado_anual"]) if info_local else 0
                         
-                        # Lógica de color llamativo (Rojo si supera 75M, Verde si es menor)
-                        color_texto = "#31333F" # Color negro clásico para mejor contraste
+                        color_texto = "#31333F" 
 
                         c1, c2 = st.columns(2)
                         with c1:
-                            st.markdown(f"""
-                                **Nº Contrato:**  
-                                <span style='color:{color_texto}; font-size:1.1em; font-weight:bold;'>{num_c}</span>
-                            """, unsafe_allow_html=True)
-                            st.markdown(f"""
-                                **Cliente:**  
-                                <span style='color:{color_texto}; font-size:1.1em; font-weight:bold;'>{cliente_n}</span>
-                            """, unsafe_allow_html=True)
+                            st.write("**Nº Contrato:**")
+                            st.markdown(f"<div style='color:{color_texto}; font-size:1.1em;'>{num_c}</div>", unsafe_allow_html=True)
+                            st.write("**Cliente:**")
+                            st.markdown(f"<div style='color:{color_texto}; font-size:1.1em;'>{cliente_n}</div>", unsafe_allow_html=True)
                         with c2:
-                            st.markdown(f""" 
-                                **Valor Total ($):**  
-                                <span style='color:{color_texto}; font-size:1.3em; font-weight:bold;'>${valor_p:,}</span>
-                            """, unsafe_allow_html=True)
-                            st.markdown(f"""
-                                **Acumulado SAGRILAF Anual:**  
-                                <span style='color:{color_texto}; font-size:1.1em; font-weight:bold;'>${val_acum:,}</span>
-                            """, unsafe_allow_html=True)
-                        
+                            st.write("**Valor Total ($):**")
+                            st.markdown(f"<div style='color:{color_texto}; font-size:1.3em;'>${valor_p:,}</div>", unsafe_allow_html=True)
+                            st.write("**Acumulado SAGRILAF Anual ($):**")
+                            st.markdown(f"<div style='color:{color_texto}; font-size:1.1em;'>${val_acum:,}</div>", unsafe_allow_html=True)
+
                         if st.form_submit_button("Confirmar Información y Crear Expediente", use_container_width=True, type="primary"):
                             database.upsert_cliente(cliente_n, es_banco_final, val_acum)
                             st.session_state['contrato_activo'] = {
@@ -194,7 +220,7 @@ else:
                                 "valor_pedido": valor_p,
                                 "tipo_carroceria": tipo_c_sel,
                                 "es_banco": es_banco_final,
-                                "acumulado_anual": acumulado,
+                                "acumulado_anual": val_acum,
                                 "oc_b64": base64.b64encode(file_bytes).decode('utf-8'),
                                 "oc_nombre": uploaded_oc.name
                             }
@@ -253,7 +279,7 @@ else:
                     del st.session_state['contrato_activo']
                     st.rerun()
             with col_acc2:
-                if st.button("🚀 Enviar Expediente a Contabilidad", use_container_width=True, type="primary"):
+                if st.button("Enviar Expediente a Contabilidad", use_container_width=True, type="primary"):
                     if len(archivos_para_enviar) < len(docs_req_data):
                         st.error("Error: Aún faltan documentos obligatorios por cargar en el expediente.")
                     else:
@@ -289,10 +315,10 @@ else:
                 with st.expander(f"📂 EXPEDIENTE EN REVISIÓN: {contrato['numero_contrato']} | Cliente: {contrato['cliente']}"):
                     col_info, col_visor = st.columns([1, 1]) 
                     with col_info:
-                        render_titulo_con_logo("Datos de Verificación", nivel="h3")
+                        st.subheader("Datos de Verificación")
                         st.write(f"**Asesor Responsable:** {contrato['asesor']}")
                         st.write(f"**Carrocería Solicitada:** {contrato['tipo_carroceria']}")
-                        st.write(f"**Monto del Pedido:** ${int(contrato['valor']):,}")
+                        st.write(f"**Monto del Pedido:** ${int(contrato['valor_pedido']):,}")
                         if contrato['comentarios']:
                             st.info(f"**Notas del Historial:**\n{contrato['comentarios']}")
                         
@@ -315,12 +341,12 @@ else:
                                         database.actualizar_estado_solicitud(contrato['numero_contrato'], "PENDIENTE_ASESOR", f"{contrato['comentarios']}{prefijo_r}{coment}")
                                         st.rerun()
                     with col_visor:
-                        st.markdown("### <span style='font-size: 1.1em;'>📄</span> Documentación Adjunta", unsafe_allow_html=True)
+                        st.subheader("Documentación Adjunta")
                         docs = database.obtener_documentos(contrato['numero_contrato'])
                         for d in docs:
                             col_doc_txt, col_doc_btn = st.columns([2, 1])
                             with col_doc_txt: st.write(f"🗎 **{d['tipo']}**\n*{d['nombre']}*")
-                            with col_doc_btn: display_pdf(d['b64'], d['nombre'])
+                            with col_doc_btn: display_pdf(d['b64'], d['nombre'], f"review_{contrato['numero_contrato']}")
 
     # ==========================================
     # SECCIÓN INFERIOR DINÁMICA: TABLA O VISOR
@@ -339,7 +365,7 @@ else:
             col_hist1, col_hist2 = st.columns([1, 1])
             with col_hist1:
                 st.write(f"**Asesor:** {con_datos['asesor']} | **Cliente:** {con_datos['cliente']}")
-                st.write(f"**Estado:** `{con_datos['estado']}` | **Valor:** ${int(con_datos['valor']):,}")
+                st.write(f"**Estado:** `{con_datos['estado']}` | **Valor:** ${int(con_datos['valor_pedido']):,}")
                 st.text_area("Notas / Observaciones:", value=con_datos['comentarios'], height=150, disabled=True, key=f"bit_visor_{contrato_seleccionado}")
             with col_hist2:
                 st.markdown("#### 📂 Archivos Adjuntos Custodiados")
@@ -347,7 +373,7 @@ else:
                 for dh in docs_historicos:
                     c_t, c_b = st.columns([2, 1])
                     with c_t: st.write(f"▪ **{dh['tipo']}**\n*{dh['nombre']}*")
-                    with c_b: display_pdf(dh['b64'], dh['nombre']) # type: ignore
+                    with c_b: display_pdf(dh['b64'], dh['nombre'], f"visor_{contrato_seleccionado}")
     else:
         st.markdown("## <span style='font-size: 1.3em;'>📊</span> Tablero de Trazabilidad General", unsafe_allow_html=True)
         datos_trazabilidad = database.obtener_solicitudes(asesor_filtro=nombre_actual) if rol_actual == "Asesor Comercial" else todas_solicitudes
@@ -366,11 +392,11 @@ else:
                 with row_cols[0]: st.write(c['numero_contrato'])
                 with row_cols[1]: st.write(c['cliente'])
                 with row_cols[2]: st.write(c['asesor'])
-                with row_cols[3]: st.write(f"${int(c['valor']):,}")
+                with row_cols[3]: st.write(f"${int(c['valor_pedido']):,}")
                 with row_cols[4]: st.write(f"`{c['estado']}`")
                 with row_cols[5]: st.caption(c['comentarios'] if c['comentarios'] else "Sin comentarios")
                 with row_cols[6]:
-                    if st.button("👁️ Ver Expediente", key=f"btn_link_{c['numero_contrato']}", use_container_width=True):
+                    if st.button("Ver Expediente", key=f"btn_link_{c['numero_contrato']}", use_container_width=True):
                         st.session_state.contrato_auditoria_seleccionado = c['numero_contrato']
                         st.session_state.modo_visor = True
                         st.rerun()
