@@ -161,7 +161,7 @@ else:
                         with col_f1: num_c = st.text_input("Nº Contrato", value=datos_oc["numero_contrato"])
                         with col_f2: cliente_n = st.text_input("Cliente", value=datos_oc["cliente"]) # type: ignore
                         with col_f3:
-                            valor_p = st.number_input("Valor Total ($)", value=datos_oc["valor_pedido"], format="%.2f")
+                            valor_p = st.number_input("Valor Total ($)", value=datos_oc["valor_pedido"], format="%d")
                         
                         with st.expander("Parámetros Financieros Adicionales"):
                             acumulado = st.number_input("Acumulado Anual del Cliente ($)", 
