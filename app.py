@@ -161,12 +161,13 @@ else:
                         with col_f1: num_c = st.text_input("Nº Contrato", value=datos_oc["numero_contrato"])
                         with col_f2: cliente_n = st.text_input("Cliente", value=datos_oc["cliente"]) # type: ignore
                         with col_f3:
-                            valor_p = st.number_input("Valor Total ($)", value=datos_oc["valor_pedido"], format="%d")
+                            # Convertimos a int para evitar el warning de tipos y quitamos decimales
+                            valor_p = st.number_input("Valor Total ($)", value=int(datos_oc["valor_pedido"]), format="%d", step=1)
+                            st.caption(f"Formato legible: **${int(valor_p):,}**")
                         
                         with st.expander("Parámetros Financieros Adicionales"):
-                            acumulado = st.number_input("Acumulado Anual del Cliente ($)", 
-                                                       value=info_local["acumulado_anual"] if info_local else 0.0,
-                                                       help="Valor total facturado a este cliente en el último año")
+                            val_acum = int(info_local["acumulado_anual"]) if info_local else 0
+                            acumulado = st.number_input("Acumulado Anual ($)", value=val_acum, format="%d", step=1)
                         
                         if st.form_submit_button("Crear Expediente", use_container_width=True, type="primary"):
                             database.upsert_cliente(cliente_n, es_banco_final, acumulado)
@@ -196,7 +197,7 @@ else:
             m1, m2, m3, m4 = st.columns([1.5, 1, 1, 1])
             with m1: st.metric("Cliente", c_activo['cliente'])
             with m2: st.metric("Tipo de Carrocería", c_activo['tipo_carroceria'])
-            with m3: st.metric("Valor del Pedido", f"${c_activo['valor_pedido']:,.2f}")
+            with m3: st.metric("Valor del Pedido", f"${int(c_activo['valor_pedido']):,}")
             with m4: st.metric("Acumulado Anual", f"${c_activo['acumulado_anual']:,.0f}")
 
             docs_existentes = database.obtener_documentos(c_activo['numero_contrato'])
@@ -274,7 +275,7 @@ else:
                         render_titulo_con_logo("Datos de Verificación", nivel="h3")
                         st.write(f"**Asesor Responsable:** {contrato['asesor']}")
                         st.write(f"**Carrocería Solicitada:** {contrato['tipo_carroceria']}")
-                        st.write(f"**Monto del Pedido:** ${contrato['valor']:,.2f}")
+                        st.write(f"**Monto del Pedido:** ${int(contrato['valor']):,}")
                         if contrato['comentarios']:
                             st.info(f"**Notas del Historial:**\n{contrato['comentarios']}")
                         
@@ -321,7 +322,7 @@ else:
             col_hist1, col_hist2 = st.columns([1, 1])
             with col_hist1:
                 st.write(f"**Asesor:** {con_datos['asesor']} | **Cliente:** {con_datos['cliente']}")
-                st.write(f"**Estado:** `{con_datos['estado']}` | **Valor:** ${con_datos['valor']:,.2f}")
+                st.write(f"**Estado:** `{con_datos['estado']}` | **Valor:** ${int(con_datos['valor']):,}")
                 st.text_area("Notas / Observaciones:", value=con_datos['comentarios'], height=150, disabled=True, key=f"bit_visor_{contrato_seleccionado}")
             with col_hist2:
                 st.markdown("#### 📂 Archivos Adjuntos Custodiados")
@@ -348,7 +349,7 @@ else:
                 with row_cols[0]: st.write(c['numero_contrato'])
                 with row_cols[1]: st.write(c['cliente'])
                 with row_cols[2]: st.write(c['asesor'])
-                with row_cols[3]: st.write(f"${c['valor']:,.2f}")
+                with row_cols[3]: st.write(f"${int(c['valor']):,}")
                 with row_cols[4]: st.write(f"`{c['estado']}`")
                 with row_cols[5]: st.caption(c['comentarios'] if c['comentarios'] else "Sin comentarios")
                 with row_cols[6]:
