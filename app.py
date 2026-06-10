@@ -164,15 +164,15 @@ else:
                         val_acum = int(info_local["acumulado_anual"]) if info_local else 0
                         
                         # Lógica de color llamativo (Rojo si supera 75M, Verde si es menor)
-                        color_monto = "#D32F2F" if valor_p > 75000000 else "#2E7D32"
+                        color_monto = "#31333F" # Color negro clásico para mejor contraste
 
                         c1, c2 = st.columns(2)
                         with c1:
                             st.markdown(f"**Nº Contrato:**  \n`{num_c}`")
                             st.markdown(f"**Cliente:**  \n`{cliente_n}`")
                         with c2:
-                            st.markdown(f"""
-                                **Valor Total ($):**  
+                            st.markdown(f""" 
+                                **Valor Total (USD):**  
                                 <span style='color:{color_monto}; font-size:1.3em; font-weight:bold;'>${valor_p:,}</span>
                             """, unsafe_allow_html=True)
                             st.markdown(f"**Acumulado SAGRILAF Anual:**  \n`${val_acum:,}`")
