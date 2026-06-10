@@ -139,14 +139,14 @@ else:
             # CARGA DE NUEVA ORDEN DE COMPRA
             st.markdown("### <span style='font-size: 1.1em;'>📁</span> Iniciar Nuevo Expediente", unsafe_allow_html=True)
             
-            col_pre1, col_pre2, col_pre3 = st.columns([1, 1, 2])
-            with col_pre1:
-                tipo_c_sel = st.selectbox("Tipo de Carrocería", ["Furgón carga seca", "Furgón isotérmico", "Carrocería tipo estaca", "Carrocerías para moto carga"])
-            with col_pre2:
-                es_banco_sel = st.checkbox("¿Es una entidad Bancaria?", help="Marque si el pagador final es un banco")
-            with col_pre3:
+            col_oc, col_tipo, col_banco = st.columns([2, 1, 1]) # Ajuste de proporciones para dar más espacio al uploader
+            with col_oc:
                 uploaded_oc = st.file_uploader("Cargar Orden de Compra (PDF)", type=['pdf'])
-            
+            with col_tipo:
+                tipo_c_sel = st.selectbox("Tipo de Carrocería", ["Furgón carga seca", "Furgón isotérmico", "Carrocería tipo estaca", "Carrocerías para moto carga"])
+            with col_banco:
+                es_banco_sel = st.checkbox("¿Es una entidad Bancaria?", help="Marque si el pagador final es un banco")
+
             if uploaded_oc:
                 with st.spinner("Procesando Orden de Compra..."):
                     file_bytes = uploaded_oc.getvalue()
