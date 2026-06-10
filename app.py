@@ -297,7 +297,7 @@ else:
                                         database.actualizar_estado_solicitud(contrato['numero_contrato'], "PENDIENTE_ASESOR", f"{contrato['comentarios']}{prefijo_r}{coment}")
                                         st.rerun()
                     with col_visor:
-                        render_titulo_con_logo("Documentación Adjunta", nivel="h3")
+                        st.subheader("📄 Documentación Adjunta")
                         docs = database.obtener_documentos(contrato['numero_contrato'])
                         for d in docs:
                             col_doc_txt, col_doc_btn = st.columns([2, 1])
