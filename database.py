@@ -2,7 +2,9 @@
 import sqlite3
 from datetime import datetime
 
-DB_NAME = "cp_contratos.db"
+# Cambiamos el nombre a v2 para forzar a Streamlit Cloud a crear una base de datos limpia
+# y evitar el OperationalError por esquemas antiguos en archivos .db residuales.
+DB_NAME = "cp_verificacion_v2.db"
 
 def get_connection():
     # check_same_thread=False es crucial para que SQLite funcione correctamente

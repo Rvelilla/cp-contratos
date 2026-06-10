@@ -117,7 +117,7 @@ else:
     # ROL: ASESOR COMERCIAL
     # ==========================================
     if rol_actual == "Asesor Comercial":
-        render_titulo_con_logo("Gestión de Contratos", nivel="h2")
+        st.header("📄 Gestión de Contratos")
         
         # --- VISTA 1: BANDEJA Y CARGA DE OC ---
         if 'contrato_activo' not in st.session_state:
@@ -137,7 +137,7 @@ else:
                 st.divider()
 
             # CARGA DE NUEVA ORDEN DE COMPRA
-            render_titulo_con_logo("Iniciar Nuevo Expediente", nivel="h3")
+            st.subheader("📁 Iniciar Nuevo Expediente")
             
             col_pre1, col_pre2, col_pre3 = st.columns([1, 1, 2])
             with col_pre1:
