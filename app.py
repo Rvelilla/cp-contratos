@@ -4,12 +4,16 @@ import base64
 import auth
 import validators
 import database
+import pdf_utils
 
 # --- INICIALIZAR BASE DE DATOS ---
 database.init_db()
 
 # --- CONFIGURACIÓN Y ESTILOS ---
-st.set_page_config(page_title="Gestor Documental CP", layout="wide")
+st.set_page_config(page_title="Verificación de Contratos", layout="wide", initial_sidebar_state="collapsed")
+
+# Lista blanca para detección automática de bancos
+LISTA_BLANCA_BANCOS = ["BANCOLOMBIA", "OCCIDENTE", "DAVIVIENDA", "BBVA", "BOGOTA", "ITAÚ", "SUDAMERIS", "FINANDINA"]
 
 st.markdown("""
     <style>
@@ -43,10 +47,27 @@ def display_pdf(base64_pdf, nombre_archivo):
 
 # --- PANTALLA DE LOGIN ---
 if not st.session_state.logged_in:
-    st.markdown("<h1 style='text-align: center;'>🏭 Sistema de Contratos CP</h1>", unsafe_allow_html=True)
-    st.write("") 
-    col1, col2, col3 = st.columns([1, 1, 1])
-    with col2:
+    # Centramos todo el bloque de acceso (Logo, Título y Formulario) en una columna central
+    _, col_centro, _ = st.columns([1, 2, 1])
+
+    with col_centro:
+        # Renderizado de Logo y Título alineados horizontalmente y centrados
+        try:
+            with open("assets/cp-logo.png", "rb") as f:
+                logo_b64 = base64.b64encode(f.read()).decode()
+            st.markdown(
+                f"""
+                <div style="display: flex; align-items: center; justify-content: center; gap: 15px; margin-bottom: 25px;">
+                    <img src="data:image/png;base64,{logo_b64}" width="65">
+                    <h1 style="margin: 0; font-size: 2.2rem; color: #31333F; white-space: nowrap;">Verificación de Contratos</h1>
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+        except Exception:
+            # Fallback en caso de error con el archivo de imagen
+            st.markdown("<h1 style='text-align: center;'>Verificación de Contratos</h1>", unsafe_allow_html=True)
+
         with st.form("login_form"):
             st.subheader("Iniciar Sesión")
             usuario_input = st.text_input("Usuario")
@@ -79,7 +100,7 @@ else:
         st.session_state.modo_visor = False
         st.rerun()
 
-    st.title(f"🚀 Panel de Trabajo: {rol_actual}")
+    st.title(f"🚀 Verificación de Contratos: {rol_actual}")
 
     # ==========================================
     # ROL: ASESOR COMERCIAL
@@ -87,38 +108,68 @@ else:
     if rol_actual == "Asesor Comercial":
         st.header("📄 Gestión de Contratos")
         
-        # --- VISTA 1: BANDEJA Y BUSCADOR (Solo visible si NO hay un contrato seleccionado) ---
+        # --- VISTA 1: BANDEJA Y CARGA DE OC ---
         if 'contrato_activo' not in st.session_state:
             
             # BANDEJA DE CORRECCIONES DIRECTA
             rechazos = database.obtener_solicitudes(estado_filtro='PENDIENTE_ASESOR', asesor_filtro=nombre_actual)
             if rechazos:
-                st.warning("⚠️ Tienes expedientes devueltos por auditoría que requieren corrección:")
+                st.warning("⚠️ Tienes expedientes devueltos para corrección:")
                 for r in rechazos:
                     col_rec1, col_rec2 = st.columns([4, 1])
                     with col_rec1:
-                        st.error(f"**Contrato:** {r['numero_contrato']} - {r['cliente']} | **Motivo del Rechazo:** {r['comentarios']}")
+                        st.error(f"**Contrato:** {r['numero_contrato']} - {r['cliente']} | **Motivo:** {r['comentarios']}")
                     with col_rec2:
                         if st.button(f"✏️ Corregir {r['numero_contrato']}", key=f"btn_corregir_{r['numero_contrato']}", use_container_width=True):
-                            st.session_state['contrato_activo'] = database.buscar_contrato_erp(r['numero_contrato'])
+                            st.session_state['contrato_activo'] = r
                             st.rerun()
                 st.divider()
 
-            # BUSCADOR DE CONTRATOS NUEVOS
-            st.subheader("Buscar Nuevo Contrato en ERP Ofima")
-            col_busq1, col_busq2 = st.columns([3, 1])
-            with col_busq1:
-                num_contrato_busqueda = st.text_input("Número de Contrato (ej. CONT-001, CONT-002)", label_visibility="collapsed")
-            with col_busq2:
-                buscar_clicked = st.button("Buscar Contrato", use_container_width=True, type="secondary")
-                
-            if buscar_clicked:
-                datos_erp = database.buscar_contrato_erp(num_contrato_busqueda)
-                if datos_erp:
-                    st.session_state['contrato_activo'] = datos_erp
-                    st.rerun() 
-                else:
-                    st.error("Contrato no encontrado en el ERP Ofima.")
+            # CARGA DE NUEVA ORDEN DE COMPRA
+            st.subheader("🚀 Iniciar Nuevo Expediente")
+            
+            col_pre1, col_pre2, col_pre3 = st.columns([1, 1, 2])
+            with col_pre1:
+                tipo_c_sel = st.selectbox("Tipo de Carrocería", ["Furgón", "Estacas", "Isotérmica", "Plataforma", "Especial"])
+            with col_pre2:
+                es_banco_sel = st.checkbox("¿Es una entidad Bancaria?", help="Marque si el pagador final es un banco")
+            with col_pre3:
+                uploaded_oc = st.file_uploader("Cargar Orden de Compra (PDF)", type=['pdf'])
+            
+            if uploaded_oc:
+                with st.spinner("Procesando Orden de Compra..."):
+                    file_bytes = uploaded_oc.getvalue()
+                    datos_oc = pdf_utils.extraer_datos_oc(file_bytes)
+                    info_local = database.obtener_datos_cliente(datos_oc["cliente"])
+                    # Auto-detección de banco si no se marcó manualmente
+                    es_banco_final = es_banco_sel or any(b in datos_oc["cliente"].upper() for b in LISTA_BLANCA_BANCOS)
+
+                    st.success("✅ Datos extraídos. Verifique y confirme:")
+                    with st.form("confirmar_datos_oc"):
+                        col_f1, col_f2, col_f3 = st.columns(3)
+                        with col_f1: num_c = st.text_input("Nº Contrato", value=datos_oc["numero_contrato"])
+                        with col_f2: cliente_n = st.text_input("Cliente", value=datos_oc["cliente"])
+                        with col_f3:
+                            valor_p = st.number_input("Valor Total ($)", value=datos_oc["valor_pedido"], format="%.2f")
+                        
+                        with st.expander("Parámetros Financieros Adicionales"):
+                            acumulado = st.number_input("Acumulado Anual del Cliente ($)", 
+                                                       value=info_local["acumulado_anual"] if info_local else 0.0,
+                                                       help="Valor total facturado a este cliente en el último año")
+                        
+                        if st.form_submit_button("Crear Expediente", use_container_width=True, type="primary"):
+                            database.upsert_cliente(cliente_n, es_banco_final, acumulado)
+                            st.session_state['contrato_activo'] = {
+                                "numero_contrato": num_c,
+                                "cliente": cliente_n,
+                                "valor_pedido": valor_p,
+                                "tipo_carroceria": tipo_c_sel,
+                                "es_banco": es_banco_final,
+                                "acumulado_anual": acumulado,
+                                "oc_b64": base64.b64encode(file_bytes).decode('utf-8'),
+                                "oc_nombre": uploaded_oc.name
+                            }
+                            st.rerun()
                     
         # --- VISTA 2: ZONA DE CARGA DOCUMENTAL ---
         else:
@@ -127,11 +178,11 @@ else:
                 c_activo['es_banco'], c_activo['acumulado_anual'], c_activo['tipo_carroceria']
             )
             
-            st.success(f"Trabajando en el contrato **{c_activo['numero_contrato']}** cargado con éxito.")
+            st.info(f"📁 **Expediente {c_activo['numero_contrato']}** | {c_activo['cliente']}")
             st.divider()
-            st.write(f"### 📋 Zona de Carga Documental: **{c_activo['numero_contrato']}** ({c_activo['cliente']})")
+            st.write("### 📋 Zona de Carga Documental")
             
-            m1, m2, m3, m4 = st.columns(4)
+            m1, m2, m3, m4 = st.columns([1.5, 1, 1, 1])
             with m1: st.metric("Cliente", c_activo['cliente'])
             with m2: st.metric("Tipo de Carrocería", c_activo['tipo_carroceria'])
             with m3: st.metric("Valor del Pedido", f"${c_activo['valor_pedido']:,.2f}")
@@ -139,8 +190,10 @@ else:
 
             docs_existentes = database.obtener_documentos(c_activo['numero_contrato'])
             dict_docs_existentes = {d['tipo']: d for d in docs_existentes}
+            
+            if 'oc_b64' in c_activo:
+                dict_docs_existentes["Orden de Compra"] = {"nombre": c_activo["oc_nombre"], "b64": c_activo["oc_b64"]}
 
-            st.write("---")
             archivos_para_enviar = {}
             columnas_carga = st.columns(3)
             
@@ -152,7 +205,8 @@ else:
                     if doc['nombre'] in dict_docs_existentes:
                         archivo_previo = dict_docs_existentes[doc['nombre']]
                         st.caption(f"🟢 *Conservando: {archivo_previo['nombre']}*")
-                        archivos_para_enviar[doc['nombre']] = {"origen": "existente", "datos": archivo_previo}
+                        # Asegurar que se guarde la OC recién cargada
+                        archivos_para_enviar[doc['nombre']] = {"origen": "nuevo" if 'oc_b64' in c_activo and doc['nombre'] == "Orden de Compra" else "existente", "nombre": archivo_previo['nombre'], "b64": archivo_previo['b64']}
                     else:
                         st.caption(f"❌ *Pendiente por cargar*")
                     
@@ -166,20 +220,20 @@ else:
             st.write("")
             col_acc1, col_acc2 = st.columns([1, 3])
             with col_acc1:
-                if st.button("❌ Cancelar / Volver", use_container_width=True):
+                if st.button("⬅️ Cancelar y Volver", use_container_width=True):
                     del st.session_state['contrato_activo']
                     st.rerun()
             with col_acc2:
-                if st.button("🚀 Validar Requisitos y Enviar a Contabilidad", use_container_width=True, type="primary"):
+                if st.button("🚀 Enviar Expediente a Contabilidad", use_container_width=True, type="primary"):
                     if len(archivos_para_enviar) < len(docs_req_data):
                         st.error("Error: Aún faltan documentos obligatorios por cargar en el expediente.")
                     else:
-                        for tipo_doc, info in archivos_para_enviar.items():
-                            if info["origen"] == "nuevo":
-                                database.guardar_o_actualizar_documento(c_activo['numero_contrato'], tipo_doc, info["nombre"], info["b64"])
+                        database.registrar_solicitud(c_activo['numero_contrato'], c_activo['cliente'], nombre_actual, 'CONTABILIDAD', c_activo['tipo_carroceria'], c_activo['valor_pedido'], "Expediente inicial cargado.")
                         
-                        database.registrar_solicitud(c_activo['numero_contrato'], nombre_actual, 'CONTABILIDAD', f"Enviado por el asesor. Listo para revisión.")
-                        st.success("¡Expediente actualizado y enviado a Contabilidad con éxito!")
+                        for tipo_doc, info in archivos_para_enviar.items():
+                            database.guardar_o_actualizar_documento(c_activo['numero_contrato'], tipo_doc, info["nombre"], info["b64"])
+                        
+                        st.success("¡Expediente enviado a Contabilidad con éxito!")
                         del st.session_state['contrato_activo']
                         st.rerun()
 

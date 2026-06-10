@@ -8,39 +8,31 @@ def get_connection():
     return sqlite3.connect(DB_NAME)
 
 def init_db():
-    """Inicializa la base de datos y simula los datos del ERP Ofima."""
+    """Inicializa la base de datos local para la gestión de contratos."""
     conn = get_connection()
     cursor = conn.cursor()
     cursor.execute("PRAGMA foreign_keys = ON;")
     
-    # Tabla de Clientes
+    # Tabla de Clientes (Local)
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS clientes (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        nombre TEXT NOT NULL,
+        nombre TEXT PRIMARY KEY,
         es_banco INTEGER NOT NULL,
         acumulado_anual REAL DEFAULT 0.0
     )""")
     
-    # Tabla de Contratos (Simula ERP Ofima)
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS contratos (
-        numero_contrato TEXT PRIMARY KEY,
-        cliente_id INTEGER,
-        tipo_carroceria TEXT NOT NULL,
-        valor_pedido REAL NOT NULL,
-        FOREIGN KEY (cliente_id) REFERENCES clientes(id)
-    )""")
-    
-    # Tabla de Solicitudes (Nuestro Workflow)
+    # Tabla de Solicitudes (Contiene los datos extraídos y el estado del proceso)
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS solicitudes (
         numero_contrato TEXT PRIMARY KEY,
+        cliente_nombre TEXT NOT NULL,
         asesor TEXT NOT NULL,
         estado TEXT NOT NULL,
         fecha_registro TEXT NOT NULL,
         comentarios TEXT,
-        FOREIGN KEY (numero_contrato) REFERENCES contratos(numero_contrato)
+        tipo_carroceria TEXT,
+        valor_pedido REAL,
+        FOREIGN KEY (cliente_nombre) REFERENCES clientes(nombre)
     )""")
 
     # Tabla de Documentos
@@ -54,50 +46,83 @@ def init_db():
         FOREIGN KEY (numero_contrato) REFERENCES solicitudes(numero_contrato)
     )""")
     
-    # Insertar Datos Base si está vacía
-    cursor.execute("SELECT COUNT(*) FROM clientes")
-    if cursor.fetchone()[0] == 0:
-        cursor.execute("INSERT INTO clientes (id, nombre, es_banco, acumulado_anual) VALUES (1, 'Bancolombia', 1, 500000000)")
-        cursor.execute("INSERT INTO clientes (id, nombre, es_banco, acumulado_anual) VALUES (2, 'Disel Andina', 0, 80000000)")
-        cursor.execute("INSERT INTO clientes (id, nombre, es_banco, acumulado_anual) VALUES (3, 'Renting', 0, 45000000)")
-        
-        cursor.execute("INSERT INTO contratos VALUES ('CONT-001', 1, 'Isotérmica', 120000000)") # Banco
-        cursor.execute("INSERT INTO contratos VALUES ('CONT-002', 2, 'Furgón', 30000000)")     # No Banco, >75M Acumulado
-        cursor.execute("INSERT INTO contratos VALUES ('CONT-003', 3, 'Estacas', 25000000)")    # No Banco, <75M Acumulado
-        
     conn.commit()
     conn.close()
 
-def buscar_contrato_erp(numero_contrato):
-    """Busca los datos del contrato simulando la consulta a Ofima."""
+def obtener_datos_cliente(nombre_cliente):
     conn = get_connection()
     cursor = conn.cursor()
-    query = """
-        SELECT c.numero_contrato, cl.nombre, cl.es_banco, cl.acumulado_anual, c.tipo_carroceria, c.valor_pedido
-        FROM contratos c JOIN clientes cl ON c.cliente_id = cl.id
-        WHERE c.numero_contrato = ?
-    """
-    cursor.execute(query, (numero_contrato,))
+    cursor.execute("SELECT es_banco, acumulado_anual FROM clientes WHERE nombre = ?", (nombre_cliente,))
     row = cursor.fetchone()
     conn.close()
     if row:
-        return {"numero_contrato": row[0], "cliente": row[1], "es_banco": bool(row[2]), 
-                "acumulado_anual": row[3], "tipo_carroceria": row[4], "valor_pedido": row[5]}
+        return {"es_banco": bool(row[0]), "acumulado_anual": row[1]}
     return None
 
-def registrar_solicitud(numero_contrato, asesor, estado, comentarios=""):
+def upsert_cliente(nombre, es_banco, acumulado_anual):
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO clientes (nombre, es_banco, acumulado_anual) 
+        VALUES (?, ?, ?)
+        ON CONFLICT(nombre) DO UPDATE SET 
+        es_banco=excluded.es_banco, acumulado_anual=excluded.acumulado_anual
+    """, (nombre, int(es_banco), acumulado_anual))
+    conn.commit()
+    conn.close()
+
+def registrar_solicitud(numero_contrato, cliente_nombre, asesor, estado, tipo_carroceria, valor_pedido, comentarios=""):
     conn = get_connection()
     cursor = conn.cursor()
     fecha = datetime.now().strftime("%Y-%m-%d %H:%M")
     cursor.execute("""
-        INSERT INTO solicitudes (numero_contrato, asesor, estado, fecha_registro, comentarios) 
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO solicitudes (numero_contrato, cliente_nombre, asesor, estado, fecha_registro, comentarios, tipo_carroceria, valor_pedido) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(numero_contrato) DO UPDATE SET 
-        estado=excluded.estado, comentarios=excluded.comentarios, fecha_registro=excluded.fecha_registro
-    """, (numero_contrato, asesor, estado, fecha, comentarios))
+        estado=excluded.estado, comentarios=excluded.comentarios, fecha_registro=excluded.fecha_registro,
+        tipo_carroceria=excluded.tipo_carroceria, valor_pedido=excluded.valor_pedido
+    """, (numero_contrato, cliente_nombre, asesor, estado, fecha, comentarios, tipo_carroceria, valor_pedido))
     conn.commit()
     conn.close()
 
+def obtener_clientes():
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT nombre, es_banco, acumulado_anual FROM clientes ORDER BY nombre")
+    rows = cursor.fetchall()
+    conn.close()
+    return [{"nombre": r[0], "es_banco": bool(r[1]), "acumulado_anual": r[2]} for r in rows]
+
+def obtener_solicitudes(estado_filtro=None, asesor_filtro=None):
+    conn = get_connection()
+    cursor = conn.cursor()
+    query = """
+        SELECT s.numero_contrato, s.asesor, s.estado, s.fecha_registro, s.comentarios,
+               s.tipo_carroceria, s.valor_pedido, s.cliente_nombre, cl.acumulado_anual, cl.es_banco
+        FROM solicitudes s
+        LEFT JOIN clientes cl ON s.cliente_nombre = cl.nombre
+        WHERE 1=1
+    """
+    params = []
+    if estado_filtro:
+        query += " AND s.estado = ?"
+        params.append(estado_filtro)
+    if asesor_filtro:
+        query += " AND s.asesor = ?"
+        params.append(asesor_filtro)
+        
+    cursor.execute(query, params)
+    rows = cursor.fetchall()
+    conn.close()
+    
+    resultados = []
+    for r in rows:
+        resultados.append({
+            "numero_contrato": r[0], "asesor": r[1], "estado": r[2], "fecha": r[3], "comentarios": r[4],
+            "tipo_carroceria": r[5], "valor": r[6], "cliente": r[7], "acumulado_anual": r[8] or 0.0,
+            "es_banco": bool(r[9])
+        })
+    return resultados
 def actualizar_estado_solicitud(numero_contrato, nuevo_estado, nuevos_comentarios):
     conn = get_connection()
     cursor = conn.cursor()
@@ -136,38 +161,6 @@ def guardar_o_actualizar_documento(numero_contrato, tipo_documento, nombre_archi
         
     conn.commit()
     conn.close()
-
-def obtener_solicitudes(estado_filtro=None, asesor_filtro=None):
-    """Obtiene las solicitudes uniendo datos del ERP y del Workflow."""
-    conn = get_connection()
-    cursor = conn.cursor()
-    query = """
-        SELECT s.numero_contrato, s.asesor, s.estado, s.fecha_registro, s.comentarios,
-               c.tipo_carroceria, c.valor_pedido, cl.nombre, cl.acumulado_anual
-        FROM solicitudes s
-        JOIN contratos c ON s.numero_contrato = c.numero_contrato
-        JOIN clientes cl ON c.cliente_id = cl.id
-        WHERE 1=1
-    """
-    params = []
-    if estado_filtro:
-        query += " AND s.estado = ?"
-        params.append(estado_filtro)
-    if asesor_filtro:
-        query += " AND s.asesor = ?"
-        params.append(asesor_filtro)
-        
-    cursor.execute(query, params)
-    rows = cursor.fetchall()
-    conn.close()
-    
-    resultados = []
-    for r in rows:
-        resultados.append({
-            "numero_contrato": r[0], "asesor": r[1], "estado": r[2], "fecha": r[3], "comentarios": r[4],
-            "tipo_carroceria": r[5], "valor": r[6], "cliente": r[7], "sagrilaft_req": r[8] > 75000000
-        })
-    return resultados
 
 def obtener_documentos(numero_contrato):
     conn = get_connection()

@@ -16,7 +16,7 @@ def obtener_documentos_requeridos(es_banco, acumulado_anual, tipo_carroceria):
     else:
         documentos.append({"nombre": "Términos y Condiciones", "motivo": "Obligatorio para Clientes No Banco"})
         # Ajuste de flexibilidad: Se presenta unificado para permitir que sea uno, el otro o ambos
-        documentos.append({"nombre": "Soporte de Pago / Orden de Compra", "motivo": "Obligatorio para No Banco (Soporte de anticipo o documento de orden)"})
+        documentos.append({"nombre": "Soporte de Pago", "motivo": "Obligatorio para No Banco (Soporte de anticipo)"})
         
         # Regla Sagrilaf condicional por monto anual
         if acumulado_anual > 75000000:

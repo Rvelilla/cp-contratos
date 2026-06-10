@@ -1,5 +1,5 @@
 {
-  "name": "CP-Contratos Dev Environment",
+  "name": "CP-Verificacion-Contratos Dev Environment",
   // Or use a Dockerfile or Docker Compose file. More info: https://containers.dev/guide/dockerfile
   "image": "mcr.microsoft.com/devcontainers/python:1-3.11-bookworm",
   "customizations": {
