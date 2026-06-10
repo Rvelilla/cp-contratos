@@ -164,18 +164,27 @@ else:
                         val_acum = int(info_local["acumulado_anual"]) if info_local else 0
                         
                         # Lógica de color llamativo (Rojo si supera 75M, Verde si es menor)
-                        color_monto = "#31333F" # Color negro clásico para mejor contraste
+                        color_texto = "#31333F" # Color negro clásico para mejor contraste
 
                         c1, c2 = st.columns(2)
                         with c1:
-                            st.markdown(f"**Nº Contrato:**  \n`{num_c}`")
-                            st.markdown(f"**Cliente:**  \n`{cliente_n}`")
+                            st.markdown(f"""
+                                **Nº Contrato:**  
+                                <span style='color:{color_texto}; font-size:1.1em; font-weight:bold;'>{num_c}</span>
+                            """, unsafe_allow_html=True)
+                            st.markdown(f"""
+                                **Cliente:**  
+                                <span style='color:{color_texto}; font-size:1.1em; font-weight:bold;'>{cliente_n}</span>
+                            """, unsafe_allow_html=True)
                         with c2:
                             st.markdown(f""" 
-                                **Valor Total (USD):**  
-                                <span style='color:{color_monto}; font-size:1.3em; font-weight:bold;'>${valor_p:,}</span>
+                                **Valor Total ($):**  
+                                <span style='color:{color_texto}; font-size:1.3em; font-weight:bold;'>${valor_p:,}</span>
                             """, unsafe_allow_html=True)
-                            st.markdown(f"**Acumulado SAGRILAF Anual:**  \n`${val_acum:,}`")
+                            st.markdown(f"""
+                                **Acumulado SAGRILAF Anual:**  
+                                <span style='color:{color_texto}; font-size:1.1em; font-weight:bold;'>${val_acum:,}</span>
+                            """, unsafe_allow_html=True)
                         
                         if st.form_submit_button("Confirmar Información y Crear Expediente", use_container_width=True, type="primary"):
                             database.upsert_cliente(cliente_n, es_banco_final, val_acum)
