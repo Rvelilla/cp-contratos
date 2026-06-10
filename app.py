@@ -117,7 +117,7 @@ else:
     # ROL: ASESOR COMERCIAL
     # ==========================================
     if rol_actual == "Asesor Comercial":
-        st.header("📄 Gestión de Contratos")
+        st.markdown("## <span style='font-size: 1.3em;'>📄</span> Gestión de Contratos", unsafe_allow_html=True)
         
         # --- VISTA 1: BANDEJA Y CARGA DE OC ---
         if 'contrato_activo' not in st.session_state:
@@ -137,11 +137,11 @@ else:
                 st.divider()
 
             # CARGA DE NUEVA ORDEN DE COMPRA
-            st.subheader("📁 Iniciar Nuevo Expediente")
+            st.markdown("### <span style='font-size: 1.1em;'>📁</span> Iniciar Nuevo Expediente", unsafe_allow_html=True)
             
             col_pre1, col_pre2, col_pre3 = st.columns([1, 1, 2])
             with col_pre1:
-                tipo_c_sel = st.selectbox("Tipo de Carrocería", ["Furgón", "Estacas", "Isotérmica", "Plataforma", "Especial"])
+                tipo_c_sel = st.selectbox("Tipo de Carrocería", ["Furgón carga seca", "Furgón isotérmico", "Carrocería tipo estaca", "Carrocerías para moto carga"])
             with col_pre2:
                 es_banco_sel = st.checkbox("¿Es una entidad Bancaria?", help="Marque si el pagador final es un banco")
             with col_pre3:
@@ -297,7 +297,7 @@ else:
                                         database.actualizar_estado_solicitud(contrato['numero_contrato'], "PENDIENTE_ASESOR", f"{contrato['comentarios']}{prefijo_r}{coment}")
                                         st.rerun()
                     with col_visor:
-                        st.subheader("📄 Documentación Adjunta")
+                        st.markdown("### <span style='font-size: 1.1em;'>📄</span> Documentación Adjunta", unsafe_allow_html=True)
                         docs = database.obtener_documentos(contrato['numero_contrato'])
                         for d in docs:
                             col_doc_txt, col_doc_btn = st.columns([2, 1])
@@ -329,9 +329,9 @@ else:
                 for dh in docs_historicos:
                     c_t, c_b = st.columns([2, 1])
                     with c_t: st.write(f"▪ **{dh['tipo']}**\n*{dh['nombre']}*")
-                    with c_b: display_pdf(dh['b64'], dh['nombre'])
+                    with c_b: display_pdf(dh['b64'], dh['nombre']) # type: ignore
     else:
-        st.subheader("📊 Tablero de Trazabilidad General")
+        st.markdown("## <span style='font-size: 1.3em;'>📊</span> Tablero de Trazabilidad General", unsafe_allow_html=True)
         datos_trazabilidad = database.obtener_solicitudes(asesor_filtro=nombre_actual) if rol_actual == "Asesor Comercial" else todas_solicitudes
         if datos_trazabilidad:
             header_cols = st.columns([1.2, 1.5, 1.2, 1.5, 1.5, 2.5, 1.5])
