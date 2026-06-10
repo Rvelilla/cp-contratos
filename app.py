@@ -157,20 +157,28 @@ else:
 
                     st.success("✅ Datos extraídos. Verifique y confirme:")
                     with st.form("confirmar_datos_oc"):
-                        col_f1, col_f2, col_f3 = st.columns(3)
-                        with col_f1: num_c = st.text_input("Nº Contrato", value=datos_oc["numero_contrato"])
-                        with col_f2: cliente_n = st.text_input("Cliente", value=datos_oc["cliente"]) # type: ignore
-                        with col_f3:
-                            # Convertimos a int para evitar el warning de tipos y quitamos decimales
-                            valor_p = st.number_input("Valor Total ($)", value=int(datos_oc["valor_pedido"]), format="%d", step=1)
-                            st.caption(f"Formato legible: **${int(valor_p):,}**")
+                        # Extraemos valores para procesar visualmente
+                        num_c = datos_oc["numero_contrato"]
+                        cliente_n = datos_oc["cliente"]
+                        valor_p = int(datos_oc["valor_pedido"])
+                        val_acum = int(info_local["acumulado_anual"]) if info_local else 0
                         
-                        with st.expander("Parámetros Financieros Adicionales"):
-                            val_acum = int(info_local["acumulado_anual"]) if info_local else 0
-                            acumulado = st.number_input("Acumulado Anual ($)", value=val_acum, format="%d", step=1)
+                        # Lógica de color llamativo (Rojo si supera 75M, Verde si es menor)
+                        color_monto = "#D32F2F" if valor_p > 75000000 else "#2E7D32"
+
+                        c1, c2 = st.columns(2)
+                        with c1:
+                            st.markdown(f"**Nº Contrato:**  \n`{num_c}`")
+                            st.markdown(f"**Cliente:**  \n`{cliente_n}`")
+                        with c2:
+                            st.markdown(f"""
+                                **Valor Total ($):**  
+                                <span style='color:{color_monto}; font-size:1.3em; font-weight:bold;'>${valor_p:,}</span>
+                            """, unsafe_allow_html=True)
+                            st.markdown(f"**Acumulado SAGRILAF Anual:**  \n`${val_acum:,}`")
                         
-                        if st.form_submit_button("Crear Expediente", use_container_width=True, type="primary"):
-                            database.upsert_cliente(cliente_n, es_banco_final, acumulado)
+                        if st.form_submit_button("Confirmar Información y Crear Expediente", use_container_width=True, type="primary"):
+                            database.upsert_cliente(cliente_n, es_banco_final, val_acum)
                             st.session_state['contrato_activo'] = {
                                 "numero_contrato": num_c,
                                 "cliente": cliente_n,
