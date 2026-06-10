@@ -31,6 +31,32 @@ if 'contrato_auditoria_seleccionado' not in st.session_state:
 if 'modo_visor' not in st.session_state:
     st.session_state.modo_visor = False
 
+@st.cache_data
+def get_base64_logo():
+    """Lee el logo de CP y lo retorna en formato base64 para embeber en HTML."""
+    try:
+        with open("assets/cp-logo.png", "rb") as f:
+            return base64.b64encode(f.read()).decode()
+    except Exception:
+        return None
+
+def render_titulo_con_logo(titulo, nivel="h1", centro=False):
+    """Renderiza un título con el logo de CP al lado, reemplazando emojis."""
+    logo_b64 = get_base64_logo()
+    justify = "center" if centro else "flex-start"
+    if logo_b64:
+        st.markdown(
+            f"""
+            <div style="display: flex; align-items: center; justify-content: {justify}; gap: 12px; margin-bottom: 15px;">
+                <img src="data:image/png;base64,{logo_b64}" width="45">
+                <{nivel} style="margin: 0; color: #31333F;">{titulo}</{nivel}>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+    else:
+        st.markdown(f"<{nivel} style='text-align: {'center' if centro else 'left'};'>{titulo}</{nivel}>", unsafe_allow_html=True)
+
 def display_pdf(base64_pdf, nombre_archivo):
     """Ofrece un botón de descarga nativo para los PDF."""
     try:
@@ -52,22 +78,7 @@ if not st.session_state.logged_in:
 
     with col_centro:
         # Renderizado de Logo y Título alineados horizontalmente y centrados
-        try:
-            with open("assets/cp-logo.png", "rb") as f:
-                logo_b64 = base64.b64encode(f.read()).decode()
-            st.markdown(
-                f"""
-                <div style="display: flex; align-items: center; justify-content: center; gap: 15px; margin-bottom: 25px;">
-                    <img src="data:image/png;base64,{logo_b64}" width="65">
-                    <h1 style="margin: 0; font-size: 2.2rem; color: #31333F; white-space: nowrap;">Verificación de Contratos</h1>
-                </div>
-                """,
-                unsafe_allow_html=True
-            )
-        except Exception:
-            # Fallback en caso de error con el archivo de imagen
-            st.markdown("<h1 style='text-align: center;'>Verificación de Contratos</h1>", unsafe_allow_html=True)
-
+        render_titulo_con_logo("Verificación de Contratos", nivel="h1", centro=True)
         with st.form("login_form"):
             st.subheader("Iniciar Sesión")
             usuario_input = st.text_input("Usuario")
@@ -100,13 +111,13 @@ else:
         st.session_state.modo_visor = False
         st.rerun()
 
-    st.title(f"🚀 Verificación de Contratos: {rol_actual}")
+    render_titulo_con_logo(f"Verificación de Contratos: {rol_actual}")
 
     # ==========================================
     # ROL: ASESOR COMERCIAL
     # ==========================================
     if rol_actual == "Asesor Comercial":
-        st.header("📄 Gestión de Contratos")
+        render_titulo_con_logo("Gestión de Contratos", nivel="h2")
         
         # --- VISTA 1: BANDEJA Y CARGA DE OC ---
         if 'contrato_activo' not in st.session_state:
@@ -126,7 +137,7 @@ else:
                 st.divider()
 
             # CARGA DE NUEVA ORDEN DE COMPRA
-            st.subheader("🚀 Iniciar Nuevo Expediente")
+            render_titulo_con_logo("Iniciar Nuevo Expediente", nivel="h3")
             
             col_pre1, col_pre2, col_pre3 = st.columns([1, 1, 2])
             with col_pre1:
@@ -260,7 +271,7 @@ else:
                 with st.expander(f"📂 EXPEDIENTE EN REVISIÓN: {contrato['numero_contrato']} | Cliente: {contrato['cliente']}"):
                     col_info, col_visor = st.columns([1, 1]) 
                     with col_info:
-                        st.subheader("📊 Datos de Verificación")
+                        render_titulo_con_logo("Datos de Verificación", nivel="h3")
                         st.write(f"**Asesor Responsable:** {contrato['asesor']}")
                         st.write(f"**Carrocería Solicitada:** {contrato['tipo_carroceria']}")
                         st.write(f"**Monto del Pedido:** ${contrato['valor']:,.2f}")
@@ -286,7 +297,7 @@ else:
                                         database.actualizar_estado_solicitud(contrato['numero_contrato'], "PENDIENTE_ASESOR", f"{contrato['comentarios']}{prefijo_r}{coment}")
                                         st.rerun()
                     with col_visor:
-                        st.subheader("📄 Documentación Adjunta")
+                        render_titulo_con_logo("Documentación Adjunta", nivel="h3")
                         docs = database.obtener_documentos(contrato['numero_contrato'])
                         for d in docs:
                             col_doc_txt, col_doc_btn = st.columns([2, 1])

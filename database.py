@@ -5,7 +5,9 @@ from datetime import datetime
 DB_NAME = "cp_contratos.db"
 
 def get_connection():
-    return sqlite3.connect(DB_NAME)
+    # check_same_thread=False es crucial para que SQLite funcione correctamente
+    # dentro del entorno multi-hilo de Streamlit, especialmente en la nube.
+    return sqlite3.connect(DB_NAME, check_same_thread=False)
 
 def init_db():
     """Inicializa la base de datos local para la gestión de contratos."""
